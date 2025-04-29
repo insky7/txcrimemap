@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+echo "Stopping all running containers..."
+docker stop $(docker ps -aq) || true
+
+echo "Removing all containers..."
+docker rm $(docker ps -aq) || true
+
+echo "Removing all unused images..."
+docker rmi $(docker images -q) || true
+
+echo "Pruning system (volumes, networks, build cache)..."
+docker system prune -a --volumes -f
+
+echo "Docker cleanup complete!"

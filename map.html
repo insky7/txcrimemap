@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GEO-ID Crime Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <!-- Include chroma.js for color scaling -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.0/chroma.min.js"></script>
+  <style>
+    *, *:before, *:after {
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Nunito', sans-serif;
+      background: #f4f7f8;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Header with logo and centered search form */
+    #header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 15px;
+      background:transparent;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      
+    }
+    #header img {
+      max-width: 100%;
+      max-height: 80px;
+      margin-bottom: 15px;
+    }
+    #header form {
+      max-width: 200;
+      width: 30%;
+      background: #f4f7f8;
+      padding: 10px 20px;
+      border-radius: 8px;
+      margin: 0 auto;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
+    }
+    #header input[type="text"] {
+      width: 100%;
+      padding: 15px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #e8eeef;
+      color: #8a97a0;
+      font-size: 16px;
+      outline: none;
+    }
+    #header button {
+      width: 100%;
+      padding: 15px;
+      font-size: 18px;
+      background: #4bc970;
+      color: #fff;
+      border: 1px solid #3ac162;
+      border-radius: 5px;
+      cursor: pointer;
+      box-shadow: 0 -1px 0 rgba(255,255,255,0.1) inset;
+      margin-bottom: 10px;
+    }
+    #header button:hover {
+      background: #3da860;
+    }
+    /* Map container */
+    #map {
+      flex: 1;
+      width: 100%;
+      height: 100vh;
+      
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <img src="static/logo.png" alt="Logo" />
+    <form id="searchForm">
+      <input type="text" id="address" placeholder="Enter an address" required />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+  <div id="map"></div>
+  <script>
+    // Linear color scale: values 0-100 mapped from green to red.
+    function colorScale(value) {
+      return chroma.scale(['green', 'orange', 'red']).domain([0, 100])(value).hex();
+    }
+    
+    let map = L.map("map", {
+      center: [37.4162029, -121.8706569],
+      zoom: 14,
+      minZoom: 14,
+      maxZoom: 30
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+    
+    document.getElementById("searchForm").addEventListener("submit", async function(event) {
+      event.preventDefault();
+      // Remove any previously set maxBounds so the map can recenter.
+      map.setMaxBounds(null);
+      
+      let address = document.getElementById("address").value;
+      let response = await fetch("/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ address })
+      });
+      let data = await response.json();
+      if (!data || !data.center) {
+        alert("No data found!");
+        return;
+      }
+      
+      let center = [data.center.lat, data.center.lon];
+      // Always recenter the map on the search address with zoom level 15.
+      map.setView(center, 15);
+      
+      // Clear previous markers and GeoJSON layers (except tile layer).
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker || layer instanceof L.GeoJSON) {
+          map.removeLayer(layer);
+        }
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+      
+      // Add a marker at the search center.
+      L.marker(center).addTo(map).bindPopup("Search Center").openPopup();
+      
+      // Draw each area (geo-ID region) as a polygon.
+      data.areas.forEach(area => {
+        let crime = area.crime_percentile || 50;
+        let style = {
+          color: "black",
+          weight: 1,
+          fillColor: colorScale(crime),
+          fillOpacity: 0.5
+        };
+        L.geoJSON(area.geometry, { style: style })
+          .addTo(map)
+          .bindPopup(`<strong>GEO-ID: ${area.geo_id}</strong><br>County: ${area.county}<br>Crime Percentile: ${crime}`);
+      });
+      
+      // Create a fixed bounding box around the center (approx. 10km radius).
+      const offset = 0.4; // ~10km in degrees
+      let fixedBounds = L.latLngBounds(
+        [center[0] - offset, center[1] - offset],
+        [center[0] + offset, center[1] + offset]
+      );
+      map.setMaxBounds(fixedBounds);
+    });
+  </script>
+</body>
+</html>
