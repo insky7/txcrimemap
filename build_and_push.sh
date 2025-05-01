@@ -2,7 +2,7 @@
 set -e
 
 # env variables
-AWS_ACCOUNT_ID=053744071699
+AWS_ACCOUNT_ID=053744071699 #this isn't confidential according to AWS https://www.lastweekinaws.com/blog/are-aws-account-ids-sensitive-information/
 AWS_REGION=us-west-2
 REPOSITORY_NAME=txcrimemapper
 IMAGE_TAG=latest
